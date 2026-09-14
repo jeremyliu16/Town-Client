@@ -21,6 +21,25 @@ function bodyMarkdown(content: string) {
   }
   return body;
 }
+function buildRoster(entries: Entry[]): Map<string, string> {
+  const roster = new Map<string, string>();
+  for (const entry of entries) {
+    const tid = text(entry.town_id);
+    if (!tid || !tid.startsWith('t_')) continue;
+    const name = text(entry.speaker_name || entry.sender_name || record(entry.being).display_name || entry.display_name);
+    if (!name) continue;
+    roster.set(tid, name);
+    if (tid.length > 8) roster.set(tid.slice(0, 8), name);
+  }
+  return roster;
+}
+function renderMentions(content: string, roster: Map<string, string>): string {
+  if (!content || roster.size === 0) return content;
+  return content.replace(/@(t_[0-9A-Za-z]+)/g, (match, token: string) => {
+    const name = roster.get(token);
+    return name ? '@' + name : match;
+  });
+}
 
 export function renderTownFeed(holder: HTMLElement, entries: Entry[], options: {
   me: string; mail?: 'inbox' | 'sent'; search: string; filters: FeedFilters; limit: number;
@@ -47,6 +66,7 @@ export function renderTownFeed(holder: HTMLElement, entries: Entry[], options: {
     const time = Date.parse(rawDate);
     return { entry, index, authorId, author, recipient, content, mentioned, mine: sent, received, related: mentioned || sent || received, rawDate, time };
   });
+  const roster = buildRoster(entries);
   const filters = options.filters;
   const toolbar = el('div', 'feed-controls');
   const relations = el('div', 'feed-relations'); relations.setAttribute('aria-label', '消息关系筛选');
@@ -119,7 +139,7 @@ export function renderTownFeed(holder: HTMLElement, entries: Entry[], options: {
         quote.append(el('strong', '', '回复 ' + text(message.entry.reply_to_being || message.entry.reply_to_sender || '#' + text(message.entry.reply_to))), el('span', '', text(message.entry.reply_to_preview).slice(0, 500) || '原消息预览不可用'));
         content.append(quote);
       }
-      const body = bodyMarkdown(message.content);
+      const body = bodyMarkdown(renderMentions(message.content, roster));
       if (message.content.length > 480 || message.content.split('\n').length > 8) {
         const details = el('details', 'social-expand'); const preview = el('summary');
         preview.append(el('span', 'social-preview', (body.textContent || message.content).replace(/\s+/g, ' ').trim().slice(0, 240)), el('span', 'expand-label', '展开全文'));
